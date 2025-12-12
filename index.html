@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIG Kopi On The Go - Tahunan Jepara</title>
+    
+    <!-- 1. CSS Pendukung (Leaflet, FontAwesome, Search, MiniMap) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <!-- CSS MiniMap -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.min.css" />
+    
+    <style>
+        /* Reset Dasar */
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background 0.3s, color 0.3s; }
+        
+        /* Layout Utama */
+        #map { height: 100vh; width: 100%; z-index: 1; }
+        
+        /* --- SIDEBAR KIRI (Filter & Info) --- */
+        .sidebar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-height: 90vh;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+        }
+
+        /* --- SIDEBAR KANAN (Daftar Lokasi & Search) --- */
+        .sidebar-right {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 250px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-height: 85vh;
+            overflow-y: hidden; 
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        /* Header Sidebar (Kiri & Kanan) */
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            cursor: pointer;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .sidebar h1, .sidebar-right h3 { 
+            color: #6f4e37; 
+            margin: 0; 
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+        }
+        .sidebar h1 { font-size: 18px; }
+        .sidebar-right h3 { font-size: 16px; }
+
+        /* Tombol Toggle Minimize */
+        .btn-toggle {
+            background: none;
+            border: none;
+            color: #6f4e37;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 5px;
+            transition: transform 0.3s;
+        }
+        
+        /* Container Konten yang bisa di-hide */
+        #sidebar-content, #list-content {
+            display: block;
+            transition: opacity 0.3s ease;
+        }
+
+        /* --- STYLE STATISTIK MINI DASHBOARD --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 15px;
+            background-color: #fff8f0;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #e0d0c0;
+        }
+        .stat-card {
+            text-align: center;
+        }
+        .stat-card.full-width {
+            grid-column: span 2;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #6f4e37;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        /* --- STYLE SEARCH BOX --- */
+        .search-container {
+            margin-bottom: 10px;
+            position: relative;
+        }
+        .search-input {
+            width: 100%;
+            padding: 8px 10px 8px 30px; /* Padding kiri untuk ikon */
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            box-sizing: border-box;
+            font-size: 13px;
+            outline: none;
+            transition: border 0.3s;
+        }
+        .search-input:focus {
+            border-color: #6f4e37;
+            box-shadow: 0 0 5px rgba(111, 78, 55, 0.2);
+        }
+        .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #999;
+            font-size: 12px;
+        }
+        
+        /* Scrolling khusus untuk daftar lokasi */
+        #location-list {
+            overflow-y: auto;
+            max-height: 65vh; /* Sedikit dikurangi untuk search box */
+            padding-right: 5px;
+        }
+
+        /* Style Item List Lokasi */
+        .location-item {
+            padding: 10px 5px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer; 
+            font-size: 13px;
+            display: flex;
+            align-items: flex-start; /* Agar align dengan multi-line */
+            gap: 8px;
+            transition: background 0.2s;
+        }
+        .location-item:hover {
+            background-color: #fcefe9; 
+            border-radius: 5px;
+        }
+        .location-item .list-icon { color: #6f4e37; margin-top: 3px; }
+        .location-info { display: flex; flex-direction: column; }
+        .rating-star { color: #f39c12; font-size: 11px; margin-top: 2px; }
+
+        /* Style Tombol Download GeoJSON */
+        .btn-download {
+            background: #27ae60; color: white; border: none; padding: 10px; 
+            width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold;
+            margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .btn-download:hover { background: #219150; }
+
+        /* Style Koordinat Mouse */
+        .leaflet-control-coordinates {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'Consolas', 'Monaco', monospace; /* Monospace agar angka tidak goyang */
+            color: #333;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            margin-right: 10px;
+            margin-bottom: 25px; /* Sedikit naik dari skala */
+            border: 1px solid #ddd;
+            pointer-events: none; /* Agar tidak mengganggu klik peta */
+        }
+
+        /* Adjust posisi MiniMap agar tidak menabrak Scale */
+        .leaflet-control-minimap {
+            border: 2px solid #ccc;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+            border-radius: 4px;
+            margin-bottom: 30px !important;
+            margin-right: 10px !important;
+        }
+
+        /* Class saat diminimize (Kiri & Kanan) */
+        .sidebar.minimized, .sidebar-right.minimized {
+            width: auto;
+            padding-bottom: 5px;
+            height: auto;
+            overflow: hidden;
+        }
+        .sidebar.minimized #sidebar-content, 
+        .sidebar-right.minimized #list-content {
+            display: none;
+        }
+
+        .sidebar p { font-size: 12px; color: #666; margin-bottom: 15px; }
+        
+        /* Komponen Filter */
+        .filter-group { margin-bottom: 15px; border-top: 1px solid #eee; padding-top: 10px; }
+        .filter-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        select { width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+
+        /* Tombol Reset */
+        .btn-reset {
+            background: #6f4e37; color: white; border: none; padding: 10px; 
+            width: 100%; border-radius: 5px; cursor: pointer; font-weight: bold;
+        }
+        .btn-reset:hover { background: #5a3e2b; }
+
+        /* Legend / Keterangan */
+        .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; font-size: 13px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+        
+        /* Styling Popup Marker */
+        .custom-popup .leaflet-popup-content-wrapper { border-radius: 10px; }
+        .popup-header { background: #6f4e37; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; }
+        .popup-body { padding: 10px; font-size: 13px; }
+        .popup-img { width: 100%; height: 100px; object-fit: cover; border-radius: 5px; margin-bottom: 10px; }
+        
+        /* Tombol Lokasi Saya & Dark Mode */
+        .custom-control-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .leaflet-control-locate, .leaflet-control-darkmode { 
+            background: white; padding: 5px; border-radius: 4px; cursor: pointer; 
+            width: 34px; height: 34px; display: flex; justify-content: center; align-items: center; /* Sedikit diperbesar */
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            font-size: 16px;
+            color: #444;
+        }
+        .leaflet-control-darkmode:hover, .leaflet-control-locate:hover { background-color: #f4f4f4; }
+
+        /* Responsif untuk HP */
+        @media (max-width: 600px) {
+            .sidebar { width: 85%; top: 10px; left: 50%; transform: translateX(-50%); max-height: 40vh; }
+            .sidebar-right { 
+                width: 85%; 
+                top: auto; 
+                bottom: 20px; 
+                left: 50%; 
+                right: auto;
+                transform: translateX(-50%); 
+                max-height: 30vh;
+            }
+            .sidebar.minimized, .sidebar-right.minimized { width: auto; max-width: 90%; left: 10px; transform: none; }
+            .leaflet-control-minimap { display: none; } /* Hide minimap di HP agar tidak sempit */
+        }
+
+        /* --- DARK MODE STYLES --- */
+        body.dark-mode .sidebar, 
+        body.dark-mode .sidebar-right {
+            background: rgba(30, 30, 30, 0.95);
+            color: #ddd;
+        }
+        body.dark-mode .sidebar-header { border-bottom-color: #444; }
+        body.dark-mode .sidebar h1, 
+        body.dark-mode .sidebar-right h3,
+        body.dark-mode .btn-toggle,
+        body.dark-mode .stat-value,
+        body.dark-mode .location-item .list-icon {
+            color: #dcb898; /* Warna emas kopi muda */
+        }
+        body.dark-mode .sidebar p, 
+        body.dark-mode .filter-group label,
+        body.dark-mode .stat-label {
+            color: #bbb;
+        }
+        body.dark-mode .filter-group,
+        body.dark-mode .location-item {
+            border-top-color: #444;
+            border-bottom-color: #444;
+        }
+        body.dark-mode select,
+        body.dark-mode .search-input {
+            background-color: #444;
+            color: #fff;
+            border-color: #666;
+        }
+        body.dark-mode .stats-grid {
+            background-color: #2a2a2a;
+            border-color: #444;
+        }
+        body.dark-mode .stat-card.full-width { border-bottom-color: #555; }
+        body.dark-mode .location-item:hover { background-color: #3a3a3a; }
+        
+        /* Dark Mode untuk Controls */
+        body.dark-mode .leaflet-control-locate,
+        body.dark-mode .leaflet-control-darkmode {
+            background-color: #333;
+            color: #fff;
+        }
+        
+        /* Dark Mode khusus Koordinat Kursor */
+        body.dark-mode .leaflet-control-coordinates {
+            background: rgba(40, 40, 40, 0.9);
+            color: #eee;
+            border: 1px solid #555;
+        }
+        
+        /* Dark Mode Scale Bar adjustment */
+        body.dark-mode .leaflet-control-scale-line {
+            background: rgba(40, 40, 40, 0.8);
+            border-color: #eee;
+            color: #eee;
+        }
+        
+        /* Dark Mode MiniMap */
+        body.dark-mode .leaflet-control-minimap {
+            border-color: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR KIRI: INFORMASI & FILTER -->
+    <div class="sidebar" id="sidebarCard">
+        <div class="sidebar-header" onclick="toggleSidebar('sidebarCard', 'toggleIconLeft')">
+            <h1><i class="fa-solid fa-mug-hot"></i> Kopi On The Go</h1>
+            <button class="btn-toggle" id="toggleIconLeft"><i class="fa-solid fa-minus"></i></button>
+        </div>
+
+        <div id="sidebar-content">
+            <p>Sistem Informasi Geografis Pemetaan Lokasi Kopi di Wilayah Kecamatan Tahunan, Jepara.</p>
+            <p><strong>Dibuat Oleh:</strong> M. Rizky (231250000522)</p>
+
+            <!-- STATISTIK MINI DASHBOARD -->
+            <div class="stats-grid">
+                <div class="stat-card full-width">
+                    <div class="stat-value" id="statTotal">0</div>
+                    <div class="stat-label">Total Lokasi Ditemukan</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statAvgRating">0.0</div>
+                    <div class="stat-label">Rata-rata Rating</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statType">All</div>
+                    <div class="stat-label">Dominasi Jenis</div>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <label>🔍 Filter Jenis Booth:</label>
+                <select id="filterType" onchange="renderMarkers()">
+                    <option value="all">Semua Jenis</option>
+                    <option value="Menetap">Kedai Menetap</option>
+                    <option value="Mobile">Kopi Keliling</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label>🗺️ Legenda Peta:</label>
+                <div class="legend-item">
+                    <div style="background-color:#5a3e2b; width:20px; height:20px; border-radius:50%; display:flex; justify-content:center; align-items:center; color:white; font-size:10px;"><i class="fa-solid fa-store"></i></div>
+                    Kedai Menetap
+                </div>
+                <div class="legend-item">
+                    <div style="background-color:#e67e22; width:20px; height:20px; border-radius:50%; display:flex; justify-content:center; align-items:center; color:white; font-size:10px;"><i class="fa-solid fa-bicycle"></i></div>
+                    Kopi Keliling
+                </div>
+                <div class="legend-item"><span class="dot" style="background:rgba(51, 136, 255, 0.2); border: 2px solid blue;"></span> Wilayah Kec. Tahunan</div>
+            </div>
+
+            <!-- TOMBOL FITUR AKADEMIS: DOWNLOAD DATA -->
+            <button class="btn-download" onclick="downloadGeoJSON()">
+                <i class="fa-solid fa-file-export"></i> Unduh Data GeoJSON
+            </button>
+
+            <button class="btn-reset" onclick="resetView()" style="margin-top: 5px;">Kembali ke Tengah</button>
+        </div>
+    </div>
+
+    <!-- SIDEBAR KANAN: DAFTAR LOKASI & SEARCH -->
+    <div class="sidebar-right" id="sidebarList">
+        <div class="sidebar-header" onclick="toggleSidebar('sidebarList', 'toggleIconRight')">
+            <h3><i class="fa-solid fa-list"></i> Daftar Lokasi</h3>
+            <button class="btn-toggle" id="toggleIconRight"><i class="fa-solid fa-minus"></i></button>
+        </div>
+
+        <div id="list-content">
+            <!-- INPUT SEARCH -->
+            <div class="search-container">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="searchInput" class="search-input" placeholder="Cari nama kopi..." oninput="renderMarkers()">
+            </div>
+
+            <p style="margin: 0 0 10px 0; font-style:italic; font-size:11px; color:#888;">Klik nama untuk menuju lokasi.</p>
+            <div id="location-list">
+                <!-- Daftar akan diisi otomatis oleh Javascript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- KONTAINER PETA -->
+    <div id="map"></div>
+
+    <!-- 2. Script Library JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <!-- Plugin MiniMap & Heatmap -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-minimap/3.6.1/Control.MiniMap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+
+    <script>
+        // --- FITUR MINIMIZE SIDEBAR ---
+        function toggleSidebar(sidebarId, iconId) {
+            var sidebar = document.getElementById(sidebarId);
+            var icon = document.querySelector('#' + iconId + ' i');
+            
+            sidebar.classList.toggle('minimized');
+
+            if (sidebar.classList.contains('minimized')) {
+                icon.classList.remove('fa-minus');
+                icon.classList.add('fa-plus');
+            } else {
+                icon.classList.remove('fa-plus');
+                icon.classList.add('fa-minus');
+            }
+        }
+
+        // --- A. INISIALISASI PETA ---
+        var map = L.map('map', { zoomControl: false }).setView([-6.6186, 110.6970], 13);
+        L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+        // --- FITUR AKADEMIS 1: SKALA PETA ---
+        L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(map);
+
+        // --- FITUR AKADEMIS 2: KOORDINAT KURSOR ---
+        var coordsControl = L.control({ position: 'bottomright' });
+        coordsControl.onAdd = function(map) {
+            var div = L.DomUtil.create('div', 'leaflet-control-coordinates');
+            div.innerHTML = "Lat: - | Lng: -";
+            return div;
+        };
+        coordsControl.addTo(map);
+
+        map.on('mousemove', function(e) {
+            var lat = e.latlng.lat.toFixed(5);
+            var lng = e.latlng.lng.toFixed(5);
+            document.querySelector('.leaflet-control-coordinates').innerHTML = `Lat: ${lat} | Lng: ${lng}`;
+        });
+
+        // --- B. BASEMAPS ---
+        var streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' });
+        var satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri' });
+        var darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 20
+        });
+
+        streetMap.addTo(map);
+
+        // --- FITUR AKADEMIS 3: HEATMAP LAYER ---
+        var heatmapLayer = L.layerGroup(); 
+
+        var baseMaps = { "Peta Jalan": streetMap, "Peta Satelit": satelliteMap, "Mode Gelap": darkMap };
+        var overlayMaps = { "Analisis Kepadatan (Heatmap)": heatmapLayer };
+        
+        L.control.layers(baseMaps, overlayMaps, {position: 'bottomright'}).addTo(map);
+
+        // --- FITUR AKADEMIS 4: MINIMAP (PETA INSET) ---
+        var miniMapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+        var miniMap = new L.Control.MiniMap(miniMapLayer, {
+            toggleDisplay: true,
+            minimized: false,
+            position: 'bottomright',
+            width: 150,
+            height: 150
+        }).addTo(map);
+
+        // --- C. DATA DUMMY ---
+        var coffeeShops = [
+            { name: "Kopi Senja Tahunan (Pusat)", lat: -6.6190, lng: 110.6980, type: "Menetap", rating: 4.8, hours: "16.00 - 23.00", menu: "Kopi Susu Gula Aren", contact: "0812-5555-001", img: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=300&q=80" },
+            { name: "Kopi Pantai Teluk Awur", lat: -6.6350, lng: 110.6600, type: "Mobile", rating: 4.5, hours: "08.00 - 17.00", menu: "Kopi Sachet Premium", contact: "0857-5555-002", img: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=300&q=80" },
+            { name: "Espresso Street Tahunan", lat: -6.6220, lng: 110.7010, type: "Menetap", rating: 4.9, hours: "18.00 - 01.00", menu: "V60 Manual Brew", contact: "0896-5555-003", img: "https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=300&q=80" },
+            { name: "Motor Kopi Senenan", lat: -6.6050, lng: 110.7000, type: "Mobile", rating: 4.3, hours: "Pagi & Sore", menu: "Cappucino Cincau", contact: "DM Instagram", img: "https://images.unsplash.com/photo-1507133750069-bef72f3707a9?auto=format&fit=crop&w=300&q=80" },
+            { name: "Janji Jiwa Ngabul", lat: -6.6400, lng: 110.7200, type: "Menetap", rating: 4.7, hours: "09.00 - 22.00", menu: "Soy Coffee Latte", contact: "0291-555-004", img: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=300&q=80" },
+            { name: "Kopi Kecapi Corner", lat: -6.6150, lng: 110.7200, type: "Menetap", rating: 4.6, hours: "10.00 - 21.00", menu: "Es Rum Regal", contact: "0291-555-005", img: "https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=300&q=80" },
+            { name: "Starling Semat (Selatan)", lat: -6.6500, lng: 110.6800, type: "Mobile", rating: 4.4, hours: "Sore - Malam", menu: "Kopi Hitam Joss", contact: "0899-555-006", img: "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?auto=format&fit=crop&w=300&q=80" },
+            { name: "Kedai Kopi Kampus Unisnu", lat: -6.6100, lng: 110.6900, type: "Menetap", rating: 4.8, hours: "08.00 - 16.00", menu: "Americano Ice", contact: "0852-555-007", img: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=300&q=80" },
+            { name: "Angkringan Kopi Joss Mantingan", lat: -6.6550, lng: 110.7100, type: "Mobile", rating: 4.5, hours: "19.00 - 02.00", menu: "Kopi Arang", contact: "Langsung Datang", img: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=300&q=80" },
+            { name: "Rustic Coffee Space (West)", lat: -6.6200, lng: 110.6650, type: "Menetap", rating: 5.0, hours: "15.00 - 23.00", menu: "Affogato", contact: "0813-555-009", img: "https://images.unsplash.com/photo-1498804103079-a6351b050096?auto=format&fit=crop&w=300&q=80" }
+        ];
+
+        var markerLayer = L.layerGroup().addTo(map);
+
+        // --- GENERATE HEATMAP DATA ---
+        var heatData = coffeeShops.map(shop => [shop.lat, shop.lng, 0.8]); // 0.8 adalah intensitas
+        L.heatLayer(heatData, {radius: 25, blur: 15, maxZoom: 15}).addTo(heatmapLayer);
+
+        var iconMenetap = L.divIcon({
+            className: 'custom-icon',
+            html: '<div style="background-color:#5a3e2b; width:30px; height:30px; border-radius:50%; border:2px solid white; display:flex; justify-content:center; align-items:center; box-shadow:0 3px 5px rgba(0,0,0,0.3);"><i class="fa-solid fa-store" style="color:white; font-size:14px;"></i></div>',
+            iconSize: [30, 30],
+            iconAnchor: [15, 30],
+            popupAnchor: [0, -30]
+        });
+
+        var iconMobile = L.divIcon({
+            className: 'custom-icon',
+            html: '<div style="background-color:#e67e22; width:30px; height:30px; border-radius:50%; border:2px solid white; display:flex; justify-content:center; align-items:center; box-shadow:0 3px 5px rgba(0,0,0,0.3);"><i class="fa-solid fa-bicycle" style="color:white; font-size:14px;"></i></div>',
+            iconSize: [30, 30],
+            iconAnchor: [15, 30],
+            popupAnchor: [0, -30]
+        });
+
+        var districtBoundary = [
+            [-6.6010, 110.6650], [-6.5980, 110.6800], [-6.5990, 110.7050], [-6.6050, 110.7250], 
+            [-6.6250, 110.7300], [-6.6500, 110.7200], [-6.6600, 110.7000], [-6.6550, 110.6700], 
+            [-6.6400, 110.6550], [-6.6200, 110.6500]
+        ];
+        var districtArea = L.polygon(districtBoundary, { color: 'blue', weight: 2, fillColor: '#3388ff', fillOpacity: 0.15 }).addTo(map).bindPopup("<b>Wilayah Kecamatan Tahunan</b>");
+
+        // --- D. FUNGSI LOGIKA ---
+        function renderMarkers() {
+            var typeFilter = document.getElementById('filterType').value;
+            var searchQuery = document.getElementById('searchInput').value.toLowerCase();
+
+            markerLayer.clearLayers();
+            var listContainer = document.getElementById('location-list');
+            listContainer.innerHTML = ""; 
+
+            var foundCount = 0;
+            var totalRating = 0;
+            var countMenetap = 0;
+            var countMobile = 0;
+
+            coffeeShops.forEach(shop => {
+                var matchType = (typeFilter === 'all' || shop.type === typeFilter);
+                var matchSearch = shop.name.toLowerCase().includes(searchQuery);
+
+                if (matchType && matchSearch) {
+                    foundCount++;
+                    totalRating += shop.rating;
+                    if(shop.type === 'Menetap') countMenetap++;
+                    else countMobile++;
+                    
+                    var selectedIcon = (shop.type === 'Menetap') ? iconMenetap : iconMobile;
+
+                    var marker = L.marker([shop.lat, shop.lng], {icon: selectedIcon});
+                    
+                    var popupContent = `
+                        <div class="popup-header"><strong>${shop.name}</strong></div>
+                        <div class="popup-body">
+                            <img src="${shop.img}" class="popup-img">
+                            <div style="text-align:center; margin-bottom:10px; color:#f39c12; font-weight:bold;">
+                                <i class="fa-solid fa-star"></i> ${shop.rating} / 5.0
+                            </div>
+                            <table style="width:100%; border-collapse:collapse;">
+                                <tr><td>🏷️ Tipe</td><td>: <b>${shop.type === 'Mobile' ? 'Kopi Keliling' : shop.type}</b></td></tr>
+                                <tr><td>🕒 Jam</td><td>: ${shop.hours}</td></tr>
+                                <tr><td>☕ Menu Best Seller</td><td>: ${shop.menu}</td></tr>
+                            </table>
+                            <a href="https://www.google.com/maps/dir/?api=1&destination=${shop.lat},${shop.lng}" target="_blank" style="display:block; background:#28a745; color:white; text-align:center; padding:5px; margin-top:10px; text-decoration:none; border-radius:4px;">Rute ke Lokasi</a>
+                        </div>
+                    `;
+                    marker.bindPopup(popupContent, {className: 'custom-popup'});
+                    markerLayer.addLayer(marker);
+
+                    var listItem = document.createElement('div');
+                    listItem.className = 'location-item';
+                    
+                    var listIconClass = (shop.type === 'Menetap') ? "fa-store" : "fa-bicycle";
+                    
+                    listItem.innerHTML = `
+                        <i class="fa-solid ${listIconClass} list-icon"></i> 
+                        <div class="location-info">
+                            <span>${shop.name}</span>
+                            <span class="rating-star"><i class="fa-solid fa-star"></i> ${shop.rating}</span>
+                        </div>
+                    `;
+                    
+                    listItem.onclick = function() {
+                        map.flyTo([shop.lat, shop.lng], 16);
+                        marker.openPopup();
+                        
+                        var sidebarList = document.getElementById('sidebarList');
+                        if (!sidebarList.classList.contains('minimized')) {
+                            toggleSidebar('sidebarList', 'toggleIconRight');
+                        }
+
+                        var sidebarCard = document.getElementById('sidebarCard');
+                        if (!sidebarCard.classList.contains('minimized')) {
+                            toggleSidebar('sidebarCard', 'toggleIconLeft');
+                        }
+                    };
+
+                    listContainer.appendChild(listItem);
+                }
+            });
+
+            document.getElementById('statTotal').innerText = foundCount;
+            var avgRating = foundCount > 0 ? (totalRating / foundCount).toFixed(1) : "0.0";
+            document.getElementById('statAvgRating').innerText = avgRating;
+
+            var dominantType = "-";
+            if (foundCount > 0) {
+                if (countMenetap > countMobile) dominantType = "Menetap";
+                else if (countMobile > countMenetap) dominantType = "Keliling";
+                else dominantType = "Seimbang";
+            }
+            document.getElementById('statType').innerText = dominantType;
+
+            if (foundCount === 0) {
+                listContainer.innerHTML = "<div style='padding:10px; text-align:center; color:#666;'>Lokasi tidak ditemukan.</div>";
+            }
+        }
+
+        renderMarkers(); 
+
+        function resetView() {
+            map.flyTo([-6.6186, 110.6970], 13);
+        }
+
+        // --- FITUR AKADEMIS 3: DOWNLOAD GEOJSON ---
+        function downloadGeoJSON() {
+            var geoJSON = {
+                "type": "FeatureCollection",
+                "features": coffeeShops.map(shop => ({
+                    "type": "Feature",
+                    "properties": {
+                        "name": shop.name,
+                        "type": shop.type,
+                        "rating": shop.rating,
+                        "menu": shop.menu
+                    },
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [shop.lng, shop.lat]
+                    }
+                }))
+            };
+
+            var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geoJSON));
+            var downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "data_kopi_tahunan.geojson");
+            document.body.appendChild(downloadAnchorNode); // required for firefox
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        // --- E. FITUR LAIN ---
+        L.Control.geocoder({ defaultMarkGeocode: false, position: 'bottomleft' })
+        .on('markgeocode', function(e) {
+            var bbox = e.geocode.bbox;
+            var poly = L.polygon([bbox.getSouthEast(), bbox.getNorthEast(), bbox.getNorthWest(), bbox.getSouthWest()]).addTo(map);
+            map.fitBounds(poly.getBounds());
+        })
+        .addTo(map);
+
+        var customControl = L.control({position: 'bottomleft'});
+        customControl.onAdd = function(map) {
+            var container = L.DomUtil.create('div', 'custom-control-container');
+            
+            var btnLocate = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-locate', container);
+            btnLocate.innerHTML = '<i class="fa-solid fa-crosshairs"></i>';
+            btnLocate.title = "Lokasi Saya";
+            btnLocate.onclick = function() { map.locate({setView: true, maxZoom: 16}); };
+
+            var btnDark = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-darkmode', container);
+            btnDark.innerHTML = '<i class="fa-solid fa-moon"></i>';
+            btnDark.title = "Mode Gelap/Terang";
+            btnDark.onclick = toggleDarkMode;
+
+            return container;
+        };
+        customControl.addTo(map);
+
+        map.on('locationfound', function(e) {
+            L.circle(e.latlng, {radius: e.accuracy/2, color:'green'}).addTo(map).bindPopup("Lokasi Anda").openPopup();
+        });
+
+        function toggleDarkMode() {
+            var body = document.body;
+            body.classList.toggle('dark-mode');
+            
+            var btnIcon = document.querySelector('.leaflet-control-darkmode i');
+            
+            if (body.classList.contains('dark-mode')) {
+                map.addLayer(darkMap);
+                map.removeLayer(streetMap);
+                map.removeLayer(satelliteMap);
+                btnIcon.classList.remove('fa-moon');
+                btnIcon.classList.add('fa-sun');
+            } else {
+                map.addLayer(streetMap);
+                map.removeLayer(darkMap);
+                btnIcon.classList.remove('fa-sun');
+                btnIcon.classList.add('fa-moon');
+            }
+        }
+    </script>
+</body>
+</html>
